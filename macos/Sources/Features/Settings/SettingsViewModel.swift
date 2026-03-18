@@ -1,225 +1,212 @@
 import SwiftUI
-import Combine
 import GhosttyKit
 
 /// View model for the settings UI. Reads current values from the Ghostty config
 /// and writes changes to the config file, triggering a reload.
+///
+/// All settings use string representations matching the config file format.
+/// Changes are written immediately (matching macOS System Settings behavior),
+/// with debouncing for continuously-variable controls like sliders.
 class SettingsViewModel: ObservableObject {
-    // MARK: - General Settings
+    /// A single setting backed by the config file.
+    /// Handles reading from config, writing changes, and triggering reload.
+    class Setting: ObservableObject {
+        let key: String
+        @Published var value: String
 
-    // font-family is a RepeatableString (not readable via C API), so we read from config file
-    @Published var fontFamily: String = "" { didSet { saveIfChanged(oldValue, fontFamily, key: "font-family") } }
-    // font-size is f32
-    @Published var fontSize: Double = 13 { didSet { saveIfChanged(oldValue, fontSize, key: "font-size") } }
-    // cursor-style is an enum
-    @Published var cursorStyle: String = "block" { didSet { saveIfChanged(oldValue, cursorStyle, key: "cursor-style") } }
-    // cursor-style-blink is ?bool
-    @Published var cursorStyleBlink: String = "" { didSet { saveIfChanged(oldValue, cursorStyleBlink, key: "cursor-style-blink") } }
-    @Published var mouseHideWhileTyping: Bool = false { didSet { saveIfChanged(oldValue, mouseHideWhileTyping, key: "mouse-hide-while-typing") } }
-    // copy-on-select is an enum
-    @Published var copyOnSelect: String = "false" { didSet { saveIfChanged(oldValue, copyOnSelect, key: "copy-on-select") } }
-    // shell-integration is an enum
-    @Published var shellIntegration: String = "detect" { didSet { saveIfChanged(oldValue, shellIntegration, key: "shell-integration") } }
-    @Published var quitAfterLastWindowClosed: Bool = false { didSet { saveIfChanged(oldValue, quitAfterLastWindowClosed, key: "quit-after-last-window-closed") } }
-    // confirm-close-surface is an enum
-    @Published var confirmCloseSurface: String = "true" { didSet { saveIfChanged(oldValue, confirmCloseSurface, key: "confirm-close-surface") } }
-    @Published var focusFollowsMouse: Bool = false { didSet { saveIfChanged(oldValue, focusFollowsMouse, key: "focus-follows-mouse") } }
+        private let save: (String, String) -> Void
+        private var isLoading = true
 
-    // MARK: - Appearance Settings
+        init(key: String, initial: String, save: @escaping (String, String) -> Void) {
+            self.key = key
+            self.value = initial
+            self.save = save
+            self.isLoading = false
+        }
 
-    @Published var windowTheme: String = "auto" { didSet { saveIfChanged(oldValue, windowTheme, key: "window-theme") } }
-    @Published var windowDecoration: String = "auto" { didSet { saveIfChanged(oldValue, windowDecoration, key: "window-decoration") } }
-    // background-opacity is f64
-    @Published var backgroundOpacity: Double = 1.0
-    // minimum-contrast is f64
-    @Published var minimumContrast: Double = 1.0
-    // unfocused-split-opacity is f64
-    @Published var unfocusedSplitOpacity: Double = 0.7
-    @Published var resizeOverlay: String = "after-first" { didSet { saveIfChanged(oldValue, resizeOverlay, key: "resize-overlay") } }
-    @Published var fontThicken: Bool = false { didSet { saveIfChanged(oldValue, fontThicken, key: "font-thicken") } }
+        func update(_ newValue: String) {
+            guard !isLoading, value != newValue else { return }
+            value = newValue
+            save(key, newValue)
+        }
 
-    // MARK: - macOS Settings
+        /// A Binding that writes through to the config file on change.
+        var binding: Binding<String> {
+            Binding(
+                get: { self.value },
+                set: { self.update($0) }
+            )
+        }
 
-    @Published var macosTitlebarStyle: String = "transparent" { didSet { saveIfChanged(oldValue, macosTitlebarStyle, key: "macos-titlebar-style") } }
-    @Published var macosOptionAsAlt: String = "false" { didSet { saveIfChanged(oldValue, macosOptionAsAlt, key: "macos-option-as-alt") } }
-    @Published var macosNonNativeFullscreen: String = "false" { didSet { saveIfChanged(oldValue, macosNonNativeFullscreen, key: "macos-non-native-fullscreen") } }
-    @Published var macosWindowButtons: String = "visible" { didSet { saveIfChanged(oldValue, macosWindowButtons, key: "macos-window-buttons") } }
-    @Published var macosTitlebarProxyIcon: String = "visible" { didSet { saveIfChanged(oldValue, macosTitlebarProxyIcon, key: "macos-titlebar-proxy-icon") } }
-    @Published var macosIcon: String = "official" { didSet { saveIfChanged(oldValue, macosIcon, key: "macos-icon") } }
-    @Published var macosAutoSecureInput: Bool = true { didSet { saveIfChanged(oldValue, macosAutoSecureInput, key: "macos-auto-secure-input") } }
-    @Published var macosWindowShadow: Bool = true { didSet { saveIfChanged(oldValue, macosWindowShadow, key: "macos-window-shadow") } }
-    @Published var quickTerminalPosition: String = "top" { didSet { saveIfChanged(oldValue, quickTerminalPosition, key: "quick-terminal-position") } }
-    @Published var quickTerminalAnimationDuration: Double = 0.2
-    @Published var quickTerminalAutoHide: Bool = true { didSet { saveIfChanged(oldValue, quickTerminalAutoHide, key: "quick-terminal-autohide") } }
+        /// Boolean binding for toggle controls.
+        var boolBinding: Binding<Bool> {
+            Binding(
+                get: { self.value == "true" },
+                set: { self.update($0 ? "true" : "false") }
+            )
+        }
 
-    // MARK: - Advanced Settings
+        /// Double binding for numeric controls.
+        var doubleBinding: Binding<Double> {
+            Binding(
+                get: { Double(self.value) ?? 0 },
+                set: { self.update(String($0)) }
+            )
+        }
+    }
 
-    @Published var autoUpdate: String = "check" { didSet { saveIfChanged(oldValue, autoUpdate, key: "auto-update") } }
-    @Published var autoUpdateChannel: String = "stable" { didSet { saveIfChanged(oldValue, autoUpdateChannel, key: "auto-update-channel") } }
-    @Published var windowSaveState: String = "default" { didSet { saveIfChanged(oldValue, windowSaveState, key: "window-save-state") } }
+    // MARK: - Settings
 
-    // MARK: - Internal State
+    // General
+    private(set) lazy var fontFamily = makeSetting("font-family")
+    private(set) lazy var fontSize = makeSetting("font-size")
+    private(set) lazy var fontThicken = makeSetting("font-thicken")
+    private(set) lazy var cursorStyle = makeSetting("cursor-style")
+    private(set) lazy var cursorStyleBlink = makeSetting("cursor-style-blink")
+    private(set) lazy var mouseHideWhileTyping = makeSetting("mouse-hide-while-typing")
+    private(set) lazy var copyOnSelect = makeSetting("copy-on-select")
+    private(set) lazy var shellIntegration = makeSetting("shell-integration")
+    private(set) lazy var quitAfterLastWindowClosed = makeSetting("quit-after-last-window-closed")
+    private(set) lazy var confirmCloseSurface = makeSetting("confirm-close-surface")
+    private(set) lazy var focusFollowsMouse = makeSetting("focus-follows-mouse")
 
-    private var isLoading = true
-    private var cancellables = Set<AnyCancellable>()
+    // Appearance
+    private(set) lazy var windowTheme = makeSetting("window-theme")
+    private(set) lazy var windowDecoration = makeSetting("window-decoration")
+    private(set) lazy var backgroundOpacity = makeSetting("background-opacity")
+    private(set) lazy var minimumContrast = makeSetting("minimum-contrast")
+    private(set) lazy var unfocusedSplitOpacity = makeSetting("unfocused-split-opacity")
+    private(set) lazy var resizeOverlay = makeSetting("resize-overlay")
+
+    // macOS
+    private(set) lazy var macosTitlebarStyle = makeSetting("macos-titlebar-style")
+    private(set) lazy var macosOptionAsAlt = makeSetting("macos-option-as-alt")
+    private(set) lazy var macosNonNativeFullscreen = makeSetting("macos-non-native-fullscreen")
+    private(set) lazy var macosWindowButtons = makeSetting("macos-window-buttons")
+    private(set) lazy var macosTitlebarProxyIcon = makeSetting("macos-titlebar-proxy-icon")
+    private(set) lazy var macosIcon = makeSetting("macos-icon")
+    private(set) lazy var macosAutoSecureInput = makeSetting("macos-auto-secure-input")
+    private(set) lazy var macosWindowShadow = makeSetting("macos-window-shadow")
+    private(set) lazy var quickTerminalPosition = makeSetting("quick-terminal-position")
+    private(set) lazy var quickTerminalAnimationDuration = makeSetting("quick-terminal-animation-duration")
+    private(set) lazy var quickTerminalAutoHide = makeSetting("quick-terminal-autohide")
+
+    // Advanced
+    private(set) lazy var autoUpdate = makeSetting("auto-update")
+    private(set) lazy var autoUpdateChannel = makeSetting("auto-update-channel")
+    private(set) lazy var windowSaveState = makeSetting("window-save-state")
+
+    // MARK: - Internal
+
+    private let config: Ghostty.Config
+    private var configValues: [String: String] = [:]
 
     init(config: Ghostty.Config) {
-        loadValues(from: config)
-        setupDebouncedSaves()
-        isLoading = false
+        self.config = config
+        self.configValues = Self.readAllValues(config: config)
     }
 
-    // MARK: - Load Values
+    // MARK: - Setting Factory
 
-    private func loadValues(from config: Ghostty.Config) {
-        // General - font-family read from config file since it's a RepeatableString
-        fontFamily = readFromConfigFile(key: "font-family") ?? ""
-        fontSize = configFloat(config, key: "font-size") ?? 13
-        cursorStyle = configString(config, key: "cursor-style") ?? "block"
-        cursorStyleBlink = configString(config, key: "cursor-style-blink") ?? ""
-        mouseHideWhileTyping = configBool(config, key: "mouse-hide-while-typing") ?? false
-        copyOnSelect = configString(config, key: "copy-on-select") ?? "false"
-        shellIntegration = configString(config, key: "shell-integration") ?? "detect"
-        quitAfterLastWindowClosed = config.shouldQuitAfterLastWindowClosed
-        confirmCloseSurface = configString(config, key: "confirm-close-surface") ?? "true"
-        focusFollowsMouse = config.focusFollowsMouse
-
-        // Appearance
-        windowTheme = configString(config, key: "window-theme") ?? "auto"
-        windowDecoration = configString(config, key: "window-decoration") ?? "auto"
-        backgroundOpacity = config.backgroundOpacity
-        minimumContrast = configDouble(config, key: "minimum-contrast") ?? 1.0
-        unfocusedSplitOpacity = configDouble(config, key: "unfocused-split-opacity") ?? 0.7
-        resizeOverlay = configString(config, key: "resize-overlay") ?? "after-first"
-        fontThicken = configBool(config, key: "font-thicken") ?? false
-
-        // macOS
-        macosTitlebarStyle = configString(config, key: "macos-titlebar-style") ?? "transparent"
-        macosOptionAsAlt = configString(config, key: "macos-option-as-alt") ?? "false"
-        macosNonNativeFullscreen = configString(config, key: "macos-non-native-fullscreen") ?? "false"
-        macosWindowButtons = configString(config, key: "macos-window-buttons") ?? "visible"
-        macosTitlebarProxyIcon = configString(config, key: "macos-titlebar-proxy-icon") ?? "visible"
-        macosIcon = configString(config, key: "macos-icon") ?? "official"
-        macosAutoSecureInput = config.autoSecureInput
-        macosWindowShadow = config.macosWindowShadow
-        quickTerminalPosition = configString(config, key: "quick-terminal-position") ?? "top"
-        quickTerminalAnimationDuration = config.quickTerminalAnimationDuration
-        quickTerminalAutoHide = config.quickTerminalAutoHide
-
-        // Advanced
-        if let au = config.autoUpdate {
-            autoUpdate = au.rawValue
+    private func makeSetting(_ key: String) -> Setting {
+        let initial = configValues[key] ?? ""
+        return Setting(key: key, initial: initial) { [weak self] key, value in
+            self?.persistAndReload(key: key, value: value)
         }
-        autoUpdateChannel = config.autoUpdateChannel.rawValue
-        windowSaveState = config.windowSaveState.isEmpty ? "default" : config.windowSaveState
     }
 
-    // MARK: - Debounced Saves (for sliders)
-
-    private func setupDebouncedSaves() {
-        $backgroundOpacity
-            .dropFirst()
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] value in
-                self?.saveValue(String(value), key: "background-opacity")
-            }
-            .store(in: &cancellables)
-
-        $minimumContrast
-            .dropFirst()
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] value in
-                self?.saveValue(String(value), key: "minimum-contrast")
-            }
-            .store(in: &cancellables)
-
-        $unfocusedSplitOpacity
-            .dropFirst()
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] value in
-                self?.saveValue(String(value), key: "unfocused-split-opacity")
-            }
-            .store(in: &cancellables)
-
-        $quickTerminalAnimationDuration
-            .dropFirst()
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] value in
-                self?.saveValue(String(format: "%.2f", value), key: "quick-terminal-animation-duration")
-            }
-            .store(in: &cancellables)
-    }
-
-    // MARK: - Save Helpers
-
-    private func saveIfChanged<T: Equatable>(_ oldValue: T, _ newValue: T, key: String) {
-        guard !isLoading, oldValue != newValue else { return }
-        let stringValue: String
-        if let boolValue = newValue as? Bool {
-            stringValue = boolValue ? "true" : "false"
-        } else if let uintValue = newValue as? UInt {
-            stringValue = String(uintValue)
-        } else if let doubleValue = newValue as? Double {
-            stringValue = String(doubleValue)
-        } else {
-            stringValue = String(describing: newValue)
-        }
-        saveValue(stringValue, key: key)
-    }
-
-    private func saveValue(_ value: String, key: String) {
+    private func persistAndReload(key: String, value: String) {
         guard ConfigFileEditor.applyChanges([key: value]) else { return }
-        triggerReload()
-    }
-
-    private func triggerReload() {
         guard let delegate = NSApplication.shared.delegate as? AppDelegate else { return }
         delegate.reloadConfig(nil)
     }
 
-    // MARK: - Config Reading Helpers
+    // MARK: - Config Value Reading
 
-    /// Read a value directly from the config file (for types not accessible via C API)
-    private func readFromConfigFile(key: String) -> String? {
-        guard let path = ConfigFileEditor.configFilePath() else { return nil }
-        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-        let lines = ConfigFileEditor.parse(contents: contents)
-        // Return the last occurrence of the key
-        var result: String?
-        for line in lines {
-            if case .setting(let k, let v, _) = line, k == key {
-                result = v
-            }
+    /// Read all settings values we care about from the config.
+    /// Uses the C API for typed reads, falling back to config file for unsupported types.
+    private static func readAllValues(config: Ghostty.Config) -> [String: String] {
+        guard let cfg = config.config else { return [:] }
+        var values: [String: String] = [:]
+
+        // Enums - read as string pointers
+        let enumKeys = [
+            "cursor-style", "cursor-style-blink", "copy-on-select",
+            "shell-integration", "confirm-close-surface",
+            "window-theme", "window-decoration", "resize-overlay",
+            "macos-titlebar-style", "macos-option-as-alt",
+            "macos-non-native-fullscreen", "macos-window-buttons",
+            "macos-titlebar-proxy-icon", "macos-icon",
+            "auto-update", "auto-update-channel", "window-save-state",
+            "quick-terminal-position",
+        ]
+        for key in enumKeys {
+            if let v = readString(cfg, key: key) { values[key] = v }
         }
-        return result
+
+        // Bools
+        let boolKeys = [
+            "mouse-hide-while-typing", "quit-after-last-window-closed",
+            "focus-follows-mouse", "font-thicken",
+            "macos-auto-secure-input", "macos-window-shadow",
+            "quick-terminal-autohide",
+        ]
+        for key in boolKeys {
+            if let v = readBool(cfg, key: key) { values[key] = v ? "true" : "false" }
+        }
+
+        // f64 values
+        let f64Keys = [
+            "background-opacity", "minimum-contrast", "unfocused-split-opacity",
+            "quick-terminal-animation-duration",
+        ]
+        for key in f64Keys {
+            if let v = readF64(cfg, key: key) { values[key] = String(v) }
+        }
+
+        // f32 values
+        if let v = readF32(cfg, key: "font-size") { values["font-size"] = String(v) }
+
+        // RepeatableString types - not accessible via C API, read from file
+        if let v = readFromConfigFile(key: "font-family") { values["font-family"] = v }
+
+        return values
     }
 
-    private func configString(_ config: Ghostty.Config, key: String) -> String? {
-        guard let cfg = config.config else { return nil }
+    // MARK: - C API Typed Readers
+
+    private static func readString(_ cfg: ghostty_config_t, key: String) -> String? {
         var v: UnsafePointer<Int8>?
-        guard ghostty_config_get(cfg, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return nil }
-        guard let ptr = v else { return nil }
+        guard ghostty_config_get(cfg, &v, key, UInt(key.utf8.count)),
+              let ptr = v else { return nil }
         return String(cString: ptr)
     }
 
-    private func configBool(_ config: Ghostty.Config, key: String) -> Bool? {
-        guard let cfg = config.config else { return nil }
+    private static func readBool(_ cfg: ghostty_config_t, key: String) -> Bool? {
         var v = false
-        guard ghostty_config_get(cfg, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return nil }
+        guard ghostty_config_get(cfg, &v, key, UInt(key.utf8.count)) else { return nil }
         return v
     }
 
-    private func configFloat(_ config: Ghostty.Config, key: String) -> Double? {
-        guard let cfg = config.config else { return nil }
-        var v: Float = 0
-        guard ghostty_config_get(cfg, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return nil }
-        return Double(v)
-    }
-
-    private func configDouble(_ config: Ghostty.Config, key: String) -> Double? {
-        guard let cfg = config.config else { return nil }
+    private static func readF64(_ cfg: ghostty_config_t, key: String) -> Double? {
         var v: Double = 0
-        guard ghostty_config_get(cfg, &v, key, UInt(key.lengthOfBytes(using: .utf8))) else { return nil }
+        guard ghostty_config_get(cfg, &v, key, UInt(key.utf8.count)) else { return nil }
         return v
+    }
+
+    private static func readF32(_ cfg: ghostty_config_t, key: String) -> Float? {
+        var v: Float = 0
+        guard ghostty_config_get(cfg, &v, key, UInt(key.utf8.count)) else { return nil }
+        return v
+    }
+
+    private static func readFromConfigFile(key: String) -> String? {
+        guard let path = ConfigFileEditor.configFilePath(),
+              let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        var result: String?
+        for line in ConfigFileEditor.parse(contents: contents) {
+            if case .setting(let k, let v, _) = line, k == key { result = v }
+        }
+        return result
     }
 }

@@ -182,6 +182,7 @@
 				Features/Settings/GeneralSettingsView.swift,
 				Features/Settings/MacOSSettingsView.swift,
 				Features/Settings/Settings.xib,
+				Features/Settings/SettingsComponents.swift,
 				Features/Settings/SettingsController.swift,
 				Features/Settings/SettingsView.swift,
 				Features/Settings/SettingsViewModel.swift,

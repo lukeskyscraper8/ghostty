@@ -6,20 +6,20 @@ struct AdvancedSettingsView: View {
     var body: some View {
         Form {
             Section("Updates") {
-                Picker("Auto Update", selection: $viewModel.autoUpdate) {
+                Picker("Auto Update", selection: viewModel.autoUpdate.binding) {
                     Text("Off").tag("off")
                     Text("Check").tag("check")
                     Text("Download").tag("download")
                 }
 
-                Picker("Update Channel", selection: $viewModel.autoUpdateChannel) {
+                Picker("Update Channel", selection: viewModel.autoUpdateChannel.binding) {
                     Text("Stable").tag("stable")
                     Text("Tip").tag("tip")
                 }
             }
 
             Section("Session") {
-                Picker("Window Save State", selection: $viewModel.windowSaveState) {
+                Picker("Window Save State", selection: viewModel.windowSaveState.binding) {
                     Text("Default").tag("default")
                     Text("Never").tag("never")
                     Text("Always").tag("always")
@@ -32,8 +32,7 @@ struct AdvancedSettingsView: View {
                 }
 
                 Button("Reload Configuration") {
-                    guard let delegate = NSApplication.shared.delegate as? AppDelegate else { return }
-                    delegate.reloadConfig(nil)
+                    reloadConfig()
                 }
 
                 if let path = ConfigFileEditor.configFilePath() {
@@ -52,5 +51,10 @@ struct AdvancedSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func reloadConfig() {
+        guard let delegate = NSApplication.shared.delegate as? AppDelegate else { return }
+        delegate.reloadConfig(nil)
     }
 }

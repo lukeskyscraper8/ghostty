@@ -6,7 +6,7 @@ struct AppearanceSettingsView: View {
     var body: some View {
         Form {
             Section("Theme") {
-                Picker("Window Theme", selection: $viewModel.windowTheme) {
+                Picker("Window Theme", selection: viewModel.windowTheme.binding) {
                     Text("Auto").tag("auto")
                     Text("Light").tag("light")
                     Text("Dark").tag("dark")
@@ -15,14 +15,14 @@ struct AppearanceSettingsView: View {
             }
 
             Section("Window") {
-                Picker("Window Decorations", selection: $viewModel.windowDecoration) {
+                Picker("Window Decorations", selection: viewModel.windowDecoration.binding) {
                     Text("Auto").tag("auto")
                     Text("None").tag("none")
                     Text("Client").tag("client")
                     Text("Server").tag("server")
                 }
 
-                Picker("Resize Overlay", selection: $viewModel.resizeOverlay) {
+                Picker("Resize Overlay", selection: viewModel.resizeOverlay.binding) {
                     Text("Always").tag("always")
                     Text("Never").tag("never")
                     Text("After First").tag("after-first")
@@ -30,40 +30,25 @@ struct AppearanceSettingsView: View {
             }
 
             Section("Transparency") {
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Background Opacity")
-                        Spacer()
-                        Text(String(format: "%.0f%%", viewModel.backgroundOpacity * 100))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $viewModel.backgroundOpacity, in: 0...1)
-                }
+                SliderSetting(
+                    "Background Opacity",
+                    setting: viewModel.backgroundOpacity,
+                    range: 0...1
+                ) { String(format: "%.0f%%", $0 * 100) }
 
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Unfocused Split Opacity")
-                        Spacer()
-                        Text(String(format: "%.0f%%", viewModel.unfocusedSplitOpacity * 100))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $viewModel.unfocusedSplitOpacity, in: 0.15...1)
-                }
+                SliderSetting(
+                    "Unfocused Split Opacity",
+                    setting: viewModel.unfocusedSplitOpacity,
+                    range: 0.15...1
+                ) { String(format: "%.0f%%", $0 * 100) }
             }
 
             Section("Contrast") {
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Minimum Contrast")
-                        Spacer()
-                        Text(String(format: "%.1f", viewModel.minimumContrast))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $viewModel.minimumContrast, in: 1...21)
-                }
+                SliderSetting(
+                    "Minimum Contrast",
+                    setting: viewModel.minimumContrast,
+                    range: 1...21
+                ) { String(format: "%.1f", $0) }
             }
         }
         .formStyle(.grouped)

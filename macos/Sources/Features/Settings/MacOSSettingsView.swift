@@ -6,26 +6,26 @@ struct MacOSSettingsView: View {
     var body: some View {
         Form {
             Section("Titlebar") {
-                Picker("Titlebar Style", selection: $viewModel.macosTitlebarStyle) {
+                Picker("Titlebar Style", selection: viewModel.macosTitlebarStyle.binding) {
                     Text("Native").tag("native")
                     Text("Transparent").tag("transparent")
                     Text("Tabs").tag("tabs")
                     Text("Hidden").tag("hidden")
                 }
 
-                Picker("Window Buttons", selection: $viewModel.macosWindowButtons) {
+                Picker("Window Buttons", selection: viewModel.macosWindowButtons.binding) {
                     Text("Visible").tag("visible")
                     Text("Hidden").tag("hidden")
                 }
 
-                Picker("Proxy Icon", selection: $viewModel.macosTitlebarProxyIcon) {
+                Picker("Proxy Icon", selection: viewModel.macosTitlebarProxyIcon.binding) {
                     Text("Visible").tag("visible")
                     Text("Hidden").tag("hidden")
                 }
             }
 
             Section("Input") {
-                Picker("Option as Alt", selection: $viewModel.macosOptionAsAlt) {
+                Picker("Option as Alt", selection: viewModel.macosOptionAsAlt.binding) {
                     Text("Off").tag("false")
                     Text("Left").tag("left")
                     Text("Right").tag("right")
@@ -34,7 +34,7 @@ struct MacOSSettingsView: View {
             }
 
             Section("Fullscreen") {
-                Picker("Non-Native Fullscreen", selection: $viewModel.macosNonNativeFullscreen) {
+                Picker("Non-Native Fullscreen", selection: viewModel.macosNonNativeFullscreen.binding) {
                     Text("Off").tag("false")
                     Text("On").tag("true")
                     Text("Visible Menu").tag("visible-menu")
@@ -43,7 +43,7 @@ struct MacOSSettingsView: View {
             }
 
             Section("Quick Terminal") {
-                Picker("Position", selection: $viewModel.quickTerminalPosition) {
+                Picker("Position", selection: viewModel.quickTerminalPosition.binding) {
                     Text("Top").tag("top")
                     Text("Bottom").tag("bottom")
                     Text("Left").tag("left")
@@ -51,28 +51,23 @@ struct MacOSSettingsView: View {
                     Text("Center").tag("center")
                 }
 
-                VStack(alignment: .leading) {
-                    HStack {
-                        Text("Animation Duration")
-                        Spacer()
-                        Text(String(format: "%.2fs", viewModel.quickTerminalAnimationDuration))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $viewModel.quickTerminalAnimationDuration, in: 0...1)
-                }
+                SliderSetting(
+                    "Animation Duration",
+                    setting: viewModel.quickTerminalAnimationDuration,
+                    range: 0...1
+                ) { String(format: "%.2fs", $0) }
 
-                Toggle("Auto-Hide", isOn: $viewModel.quickTerminalAutoHide)
+                Toggle("Auto-Hide", isOn: viewModel.quickTerminalAutoHide.boolBinding)
             }
 
             Section("Security") {
-                Toggle("Auto Secure Input", isOn: $viewModel.macosAutoSecureInput)
+                Toggle("Auto Secure Input", isOn: viewModel.macosAutoSecureInput.boolBinding)
             }
 
             Section("Window") {
-                Toggle("Window Shadow", isOn: $viewModel.macosWindowShadow)
+                Toggle("Window Shadow", isOn: viewModel.macosWindowShadow.boolBinding)
 
-                Picker("App Icon", selection: $viewModel.macosIcon) {
+                Picker("App Icon", selection: viewModel.macosIcon.binding) {
                     Text("Official").tag("official")
                     Text("Custom Style").tag("custom-style")
                 }
