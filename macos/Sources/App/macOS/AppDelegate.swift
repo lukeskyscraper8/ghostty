@@ -941,7 +941,7 @@ class AppDelegate: NSObject,
     // MARK: - IB Actions
 
     @IBAction func openConfig(_ sender: Any?) {
-        Ghostty.App.openConfig()
+        SettingsController.shared.show(config: ghostty.config)
     }
 
     @IBAction func reloadConfig(_ sender: Any?) {
@@ -967,6 +967,7 @@ class AppDelegate: NSObject,
     @IBAction func closeAllWindows(_ sender: Any?) {
         TerminalController.closeAllWindows()
         AboutController.shared.hide()
+        SettingsController.shared.hide()
     }
 
     @IBAction func showAbout(_ sender: Any?) {
